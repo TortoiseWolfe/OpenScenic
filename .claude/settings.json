@@ -1,0 +1,24 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'g=$(command -v graphify || echo $HOME/.local/bin/graphify); [ -x \"$g\" ] && exec \"$g\" hook-guard search || exit 0'"
+          }
+        ]
+      },
+      {
+        "matcher": "Read|Glob",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'g=$(command -v graphify || echo $HOME/.local/bin/graphify); [ -x \"$g\" ] && exec \"$g\" hook-guard read || exit 0'"
+          }
+        ]
+      }
+    ]
+  }
+}
