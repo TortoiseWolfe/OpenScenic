@@ -9,6 +9,25 @@ interface BrokenLink {
 }
 
 /**
+ * Map a GitHub Pages project address to the same path on the build under test.
+ *
+ * A project site lives at https://<owner>.github.io/<repo>/..., so its first path
+ * segment is the repo name, whatever the repo is called. The build under test is
+ * served from the root of baseUrl, so that segment is dropped. Any other address
+ * (a custom domain, an external host, localhost) is returned untouched.
+ *
+ * This replaces a hard-coded `/ScriptHammer` prefix that only worked in a repo with
+ * that name, and it lets the share-image check prove the image exists in THIS build
+ * rather than depend on a publish that may not have happened (OpenScenic#3).
+ */
+function toBuildUrl(url: string, baseUrl: string): string {
+  const parsed = new URL(url);
+  if (!parsed.hostname.endsWith('.github.io')) return url;
+  const path = parsed.pathname.replace(/^\/[^/]+/, '');
+  return `${baseUrl.replace(/\/$/, '')}${path}${parsed.search}`;
+}
+
+/**
  * Check one referenced resource, distinguishing a genuinely broken resource
  * from an external host that merely failed to answer (#323).
  *
@@ -307,11 +326,11 @@ test.describe('Broken Links Detection', () => {
 
   test('check meta tag images and resources', async ({ page, baseURL }) => {
     baseUrl = baseURL || 'http://localhost:3000';
-    // og:image is built from an absolute production deployUrl (src/utils/metadata.tsx),
-    // not a path into the build under test — so this list may only contain pages whose
-    // OG image is already live in production. A page merging in the same PR that adds
-    // its OG image will 404 here during CI (image isn't deployed yet) and fail this test
-    // on otherwise-correct code. Add new pages only after their image has shipped to prod.
+    // og:image is an absolute production address (src/utils/metadata.tsx), because
+    // crawlers require one. A github.io address is mapped onto the build under test
+    // (toBuildUrl), so the check proves the image ships in THIS build and does not
+    // depend on a publish that may not have happened (OpenScenic#3). An address on a
+    // custom domain is still fetched live.
     const pagesToCheck = ['/', '/blog', '/blog/scripthammer-intro'];
     const brokenResources: BrokenLink[] = [];
 
@@ -325,7 +344,7 @@ test.describe('Broken Links Detection', () => {
       if (ogImage) {
         await checkResource(
           page,
-          new URL(ogImage, page.url()).href,
+          toBuildUrl(new URL(ogImage, page.url()).href, baseUrl),
           'Open Graph image not found',
           baseUrl,
           brokenResources
@@ -339,7 +358,7 @@ test.describe('Broken Links Detection', () => {
       if (twitterImage) {
         await checkResource(
           page,
-          new URL(twitterImage, page.url()).href,
+          toBuildUrl(new URL(twitterImage, page.url()).href, baseUrl),
           'Twitter card image not found',
           baseUrl,
           brokenResources
@@ -403,10 +422,7 @@ test.describe('Broken Links Detection', () => {
       .map((url) => {
         // Handle production URLs (github.io)
         if (url.includes('github.io')) {
-          const prodUrl = new URL(url);
-          // Remove base path (/ScriptHammer) from pathname
-          const path = prodUrl.pathname.replace(/^\/ScriptHammer/, '');
-          return `${baseUrl}${path}`;
+          return toBuildUrl(url, baseUrl);
         }
         // Already a localhost URL
         if (url.startsWith(baseUrl)) {
